@@ -208,12 +208,9 @@ static void *find_fit(size_t size, int type) {
             break;
     }
     if (i == list_tail) {
-        // print_usage();
-        // printf("merge\n");
         for (i = GET_SUCC(list_head); i != list_tail; i = GET_SUCC(i)) {
             coalesce(i);
         }
-        // printf("merge finish\n");
         return NULL;
     }
     pop(i);
@@ -232,7 +229,7 @@ static void place(void* ptr, size_t size) {
     ptr = NEXT_BLKP(ptr);
     PUT(HDRP(ptr), PACK(block_size - size, 0));
     PUT(FTRP(ptr), PACK(block_size - size, 0));
-    push_front(ptr);
+    push_back(ptr);
 }
 
 /* 
