@@ -75,14 +75,18 @@ team_t team = {
 #define GET_SUCC(bp)  ((void *)GET(((char *)bp + WSIZE)))
 #define PUT_SUCC(bp, succ) (*((unsigned int *)((char *)(bp) + WSIZE)) = (succ))
 
-#define LIST_COUNT 10
+#define LIST_COUNT 29
 #define INT_MAX 0x7fffffff
 static int threshold[LIST_COUNT] = {
-    1 >> 4, 1 >> 5, 1 >> 6, 1 >> 7, 1 >> 8, 1 >> 9, 1 >> 10, 1 >> 11, 1 >> 12, 
-    // 1 >> 13, 1 >> 14, 1 >> 15, 1 >> 16, 1 >> 17, 1 >> 18, 1 >> 19, 1 >> 20, 1 >> 21, 
-    // 1 >> 22, 1 >> 23, 1 >> 24, 1 >> 25, 1 >> 26, 1 >> 27, 1 >> 28, 1 >> 29, 1 >> 30, 
+    0x10, 0x20, 0x40, 0x80,
+    0x100, 0x200, 0x400, 0x800,
+    0x1000, 0x2000, 0x4000, 0x8000,
+    0x10000, 0x20000, 0x40000, 0x80000,
+    0x100000, 0x200000, 0x400000, 0x800000,
+    0x1000000, 0x2000000, 0x4000000, 0x8000000,
+    0x10000000, 0x20000000, 0x40000000, 0x80000000,
     INT_MAX};
-int get_index(int size) {
+inline int get_index(int size) {
     for (int i = 0; i < LIST_COUNT; i++) {
         if (size < threshold[i]) return i;
     }
@@ -102,25 +106,25 @@ static void link_node(void* bp1, void* bp2) {
 
 // only when coalesce we pop a node by pointer
 // bp must not be list_head or list_tail
-static void pop(void* bp) {
+inline static void pop(void* bp) {
     link_node(GET_PRED(bp), GET_SUCC(bp));
 }
 
-static void* pop_front(int i) {
+inline static void* pop_front(int i) {
     void* head = GET_SUCC(list_head[i]);
     if (head == list_tail[i]) return NULL;
     pop(head);
     return head;
 }
 
-static void push_back(void* bp) {
+inline static void push_back(void* bp) {
     int i = get_index(GET_SIZE(HDRP(bp)));
     void* pred = GET_PRED(list_tail[i]);
     link_node(pred, bp);
     link_node(bp, list_tail[i]);
 }
 
-static void push_front(void* bp) {
+inline static void push_front(void* bp) {
     int i = get_index(GET_SIZE(HDRP(bp)));
     void* old_head = GET_SUCC(list_head[i]);
     link_node(list_head[i], bp);
@@ -182,6 +186,7 @@ static void* extend_heap(size_t words) {
 }
 
 // p1 is near to p2
+// p1 and p2 is already in free list
 static void merge(void* p1, void* p2) {
     if (NEXT_BLKP(p1) != p2) return;
     int alloc1 = GET_ALLOC(HDRP(p1)), alloc2 = GET_ALLOC(HDRP(p2));
@@ -212,7 +217,7 @@ static void* coalesce(void *ptr) {
         ptr = pre;
     }
     void *next = NEXT_BLKP(ptr);
-    if (GET_SIZE(HDRP(next)) == 0) // no next exist
+    if (GET_SIZE(HDRP(next)) == 0) // no next block exists
         return ptr;
     int next_alloc = GET_ALLOC(HDRP(next));
     if (!next_alloc) {
@@ -259,9 +264,9 @@ static void *find_fit(size_t size, int type) {
     }
     if (i == NULL) {
         /* merge */
-        for (int j = get_index(size); j >= 0; j--) {
-            coalesce_list(j);
-        }
+        // for (int j = get_index(size); j >= 0; j--) {
+        //     coalesce_list(j);
+        // }
         return NULL;
     }
     pop(i);
@@ -281,6 +286,7 @@ static void place(void* ptr, size_t size) {
     PUT(HDRP(ptr), PACK(block_size - size, 0));
     PUT(FTRP(ptr), PACK(block_size - size, 0));
     push_back(ptr);
+    coalesce(ptr);
 }
 
 
@@ -296,13 +302,15 @@ void *mm_malloc(size_t size)
     for (int i = 0; i < 2 && (block == NULL); i++) {
         block = find_fit(nsize, 0); 
     }
-    if (block == NULL) {
-        block = extend_heap(nsize / WSIZE);
-        if (block == (void *) -1) {
-            return NULL;
-        }
+    if (block != NULL) {
+        place(block, nsize);
+        return block;
     }
-    place(block, nsize);
+    block = extend_heap(nsize / WSIZE);
+    if (block == (void *) -1) {
+        return NULL;
+    }
+    place(block, GET_SIZE(HDRP(block)));
     return block;
 }
 
@@ -317,6 +325,7 @@ void mm_free(void *ptr)
     PUT(HDRP(ptr), PACK(size, 0));
     PUT(FTRP(ptr), PACK(size, 0));
     push_back(ptr);
+    coalesce(ptr);
 }
 
 /*
